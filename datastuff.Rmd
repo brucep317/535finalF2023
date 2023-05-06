@@ -1,0 +1,73 @@
+---
+title: "535finalstuff"
+author: "Bruce Phillips"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#setwd('folder with the csv's in it')
+case<-read.csv('Case.csv',header = T)
+region<-read.csv('Region.csv',header=T)
+weather<-read.csv('Weather.csv',header=T)
+```
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+head(case)
+```
+```{r}
+head(region)
+```
+
+```{r}
+head(weather)
+```
+
+
+
+
+First some transforms on the region set for adjoining purposes. There are a few cities with the same name in multiple provinces so we need make them uniquely determined to adjoin the case totals. The city column is now removed, original province column remains for adjoining the weather later.Code column also removed.
+
+```{r}
+(region_new<-region%>%unite('province_city',c(province,city),remove=F,sep = '_')%>%select(-c('code','city')))
+```
+
+Next get the case totals for each city. Issue here is the city data is missing for a few observations and theres not many recorded cases to begin with (an interesting fact on its own) this leaves us with very few usable observations left (and only 48 distinct cities where a case was recorded)
+
+```{r}
+(case_new<-case%>%filter(city!='from other city' & city!='-')%>%unite('province_city',c(province,city),remove=T,sep = '_'))
+```
+
+```{r}
+(case_tot<-case_new%>%group_by(province_city)%>%summarise(total_cases=n()))
+```
+
+Adjoin to region table
+```{r}
+(region_cases<-region_new%>%inner_join(case_tot,by='province_city')%>%relocate(total_cases,.after=province_city))
+```
+
+Now get province weather data averages. There is some missing data here.
+```{r}
+(weather_avg<-weather%>%group_by(province)%>%summarise_at(c('avg_temp','precipitation','avg_relative_humidity'),mean))
+```
+
+Adjoin to region table, also did some cleaning. Final product below
+```{r}
+region_final<-region_cases%>%right_join(weather_avg,by='province')%>%filter(is.na(province_city)==F)%>%
+  mutate(across(c(avg_temp, precipitation,avg_relative_humidity), ~replace_na(., mean(., na.rm=TRUE))))%>%
+  rename(province_avg_temp=avg_temp)%>%rename(province_avg_precip=precipitation)%>%rename(province_avg_rel_hum=avg_relative_humidity)
+```
+
+```{r}
+region_final%>%head
+```
+
